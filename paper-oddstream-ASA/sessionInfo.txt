@@ -1,0 +1,22 @@
+R version 3.5.2 (2018-12-20)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS Mojave 10.14.2
+
+Matrix products: default
+BLAS: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRblas.0.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_AU.UTF-8/en_AU.UTF-8/en_AU.UTF-8/C/en_AU.UTF-8/en_AU.UTF-8
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] knitr_1.21
+
+loaded via a namespace (and not attached):
+ [1] compiler_3.5.2  magrittr_1.5    tools_3.5.2     htmltools_0.3.6
+ [5] rticles_0.6     yaml_2.2.0      Rcpp_1.0.0      stringi_1.2.4  
+ [9] rmarkdown_1.11  stringr_1.4.0   xfun_0.4        digest_0.6.18  
+[13] evaluate_0.13  

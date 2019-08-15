@@ -1,0 +1,46 @@
+---
+title: Anomaly Detection in Streaming Nonstationary Temporal Data
+# to produce blinded version set to 1
+blinded: 1
+
+authors:
+- name: Priyanga Dilini Talagala$^{1, 3}$
+ # thanks: The authors gratefully acknowledge ...
+  affiliation: \vspace*{-0.7cm}
+- name: Rob J. Hyndman$^{1, 3}$
+  affiliation: \vspace*{-0.7cm}
+- name: Kate Smith-Miles$^{2, 3}$
+  affiliation: \vspace*{-0.7cm}
+- name: Sevvandi Kandanaarachchi$^{1, 3}$
+  affiliation: \vspace*{-0.7cm}
+- name: Mario A. Mu?oz$^{2, 3}$
+  affiliation: \parbox{14cm}{$^1$\small{Department of Econometrics and Business Statistics, Monash University, Australia}.\newline $^2$ \small{School of Mathematics and Statistics, University of Melbourne, Australia} \newline $^3$ \small{ARC Centre of Excellence for Mathematics and Statistical Frontiers (ACEMS), Australia}}
+
+keywords:
+- Concept drift; Extreme value theory; Feature-based time series analysis; Kernel-based density estimation; Multivariate time series; Outlier detection.
+
+abstract: |
+  This article proposes a framework that provides early detection of anomalous series within a large collection of non-stationary streaming time series data. We define an anomaly as an observation that is very unlikely given the recent distribution of a given system. The proposed framework first calculates a boundary for the system's typical behavior using extreme value theory. Then a sliding window is used to test for anomalous series within a newly arrived collection of series. The model uses time series features as inputs, and a density-based comparison to detect any significant changes in the distribution of the features. Using various synthetic and real world datasets, we demonstrate the wide applicability and usefulness of our proposed framework. We show that the proposed algorithm can work well in the presence of noisy non-stationarity data within multiple classes of time series. This framework is implemented in the open source R package *oddstream*. R code and data are available in the supplementary materials.
+
+bibliography: bibliography.bib
+output:
+  rticles::asa_article:
+    keep_tex: yes
+#preamble: \input preamble.tex
+header-includes:
+ - \usepackage{color}
+ - \usepackage{bm}
+ - \usepackage{mathptmx}
+ - \usepackage{float}
+ - \floatplacement{figure}{H}
+ - \usepackage{caption}
+ - \setlength{\belowcaptionskip}{-10pt}
+ - \captionsetup[figure]{font=small}
+# - \setlength{\bibsep}{0pt}
+classoption: letterpaper
+geometry: margin=1in
+---
+
+
+```{r main, child='main.Rmd'}
+```

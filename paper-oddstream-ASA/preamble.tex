@@ -1,0 +1,77 @@
+\usepackage[utf8]{inputenc}
+
+%% CAPTIONS
+\usepackage{caption}
+\DeclareCaptionStyle{italic}[justification=centering]
+ {labelfont={bf},textfont={it},labelsep=colon}
+\captionsetup[figure]{style=italic,format=plain,singlelinecheck=true,font=small, skip=0pt}
+\captionsetup[table]{style=italic,format=plain,singlelinecheck=true,font=small, skip=0pt}
+
+% to reduce the spacing below figures
+\setlength{\belowcaptionskip}{-10pt}
+\captionsetup[figure]{font=small}
+
+%% MATHS
+\usepackage{amsmath} % for \boldsymbol macro
+\usepackage{bm}
+\usepackage[showonlyrefs]{mathtools}
+\allowdisplaybreaks
+
+%% GRAPHICS
+\setcounter{topnumber}{2}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}
+\renewcommand{\topfraction}{0.85}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.15}
+\renewcommand{\floatpagefraction}{0.7}
+
+
+%\usepackage[section]{placeins}
+
+%% LINE AND PAGE BREAKING
+\sloppy
+\clubpenalty = 10000
+\widowpenalty = 10000
+\brokenpenalty = 10000
+\usepackage{microtype}
+
+
+%\usepackage{mathptmx}
+\usepackage[section]{placeins}
+
+%colour text
+\usepackage{color}
+
+\usepackage{mathptmx}
+
+%Remove the spacing between paragraphs and have a small paragraph indentation - %hyndsight blog post
+\setlength{\parskip}{0cm}
+\setlength{\parindent}{1em}
+
+%Remove space around section headings.
+
+\usepackage[compact]{titlesec}
+\titlespacing{\section}{0pt}{0ex}{0ex}
+\titlespacing{\subsection}{0pt}{0ex}{0ex}
+\titlespacing{\subsubsection}{0pt}{0ex}{0ex}
+
+ 
+\usepackage[subtle]{savetrees}
+\usepackage{enumitem}
+
+\usepackage{natbib}
+\setlength{\bibsep}{0.0pt}
+
+\usepackage{setspace}
+\onehalfspacing
+
+
+\usepackage{titlesec}
+\titleformat{\section}
+  {\normalfont\fontsize{14}{15}\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\fontsize{13}{15}\bfseries}{\thesubsection}{1em}{}
+  
+
+\usepackage{changepage} % to use adjustwidth

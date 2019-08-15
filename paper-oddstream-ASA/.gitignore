@@ -1,0 +1,17 @@
+/cache/*
+**/*_cache/*
+**/cache/*
+**/*_files/*
+/figure/*
+.DS_Store
+*.aux
+*.log
+*.toc
+*.out
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.run.xml
+*.bcf
+

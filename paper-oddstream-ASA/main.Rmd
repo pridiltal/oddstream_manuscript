@@ -1,0 +1,389 @@
+```{r initial, echo = FALSE, cache = FALSE, include = FALSE}
+library(knitr)
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  echo = FALSE,
+  fig.path = 'figure/',
+  cache.path = 'cache/',
+  fig.align = 'center',
+  fig.show = 'hold',
+  cache = TRUE,
+  external = TRUE,
+  dev = "png",
+  fig.height = 6,
+  fig.width = 10,
+  out.width = "0.8\\textwidth",
+  size= 'small',
+  fig.pos = "ht",
+  fig.asp = 0.5
+  
+)
+read_chunk('src/main.R')
+```
+
+```{r load}
+```
+
+
+# Introduction
+\label{sec:intro}
+
+Anomaly detection in streaming temporal data has become an important research topic due to its wide range of possible applications, such as the detection of extreme weather conditions, intruders on secured premises, gas and oil leakages, illegal pipeline tapping, power cable faults, and water contamination. The rapid detection of these critical events is vital in order to protect valuable lives and/or assets. Furthermore, since these applications spend the majority of their operational life in a "typical" state, and the associated data is obtained with the help of millions of sensors, manual monitoring is ineffective and time consuming, as well as highly unlikely to be able to capture all violations [@lavin2015evaluating]. Thus, the development of powerful new automated methods for the early detection of anomalies in streaming signals is very timely, with far-reaching benefits.
+
+This paper makes three fundamental contributions to anomaly detection in streaming non-stationary environments. First, we propose a framework that provides early detection of anomalies within a large collection of streaming time series data. We show that the proposed algorithm works well even in the presence of noisy signals and multimodal distributions. Second, we propose an approach for dealing with non-stationary environments (also known as "concept drift" in the machine learning literature). We reduce the collection of time series to a 2-dimensional feature space, and then apply a bivariate two-sample nonparametric test to detect any significant change in the feature distribution. The asymptotic normality of the test allows us to bypass computationally intensive re-sampling methods when computing critical values. Third, we use various datasets to demonstrate the wide applicability and usefulness of our proposed framework to several application domains.
+
+```{r mvtsplot1, cache=TRUE, fig.cap= "Multivariate time series plot of a dataset obtained using a fiber optic cable. Axis `Cable' represents individual points of the sensor cable. There are 640 time series each with 1459 time points. Yellow corresponds to low values and black to high values. The black region near the upper end point of the cable (around 350 to 500) indicates the presence of an anomalous event (e.g., intrusion attack, gas pipeline leak, etc.) that has taken place during the 500--1300 time period.", fig.height = 4, fig.width = 8, size= 'small'}
+```
+
+Fiber optic sensing technology can be used to detect unusual, critical events such as power cable faults [@jiang2009technological], electrical short circuits [@krohn2000fiber], gas or oil pipeline leakages [@yoon2011swats; @nikles2009long], intruders to secured premises [@nikles2009long], etc. For example, a sensor cable may be attached to a fence or buried along a facility's perimeter in soil or concrete, and can detect intrusion attacks such as climbing or cutting a fence, or walking, running or crawling along a facility's perimeter [@catalano2014intrusion]. A light signal pulsated through the cable is easily disturbed by changes in the physical environment, such as the temperature, strain, or pressure. Thus, changes in the intensity, phase, wavelength or transit time of light in the fiber may indicate intrusions. Similarly, sensor cables can monitor temperature profiles along gas and oil pipelines, allowing the detection of leakages [@krohn2000fiber]. Each point of the cable acts as a sensor and generates a time series. Figure \ref{fig:mvtsplot1} shows the multivariate time series obtained using a fiber optic cable. (As the dataset contains commercially sensitive information, the actual application is not given here).
+
+Our aim in this work is to identify the locations of unusual critical events as soon as possible. We propose an algorithm which has the ability to (a) deal with streaming data; (b) assist in the early detection of anomalies; (c) deal with large amounts of data efficiently; (d) deal with non-stationary data distributions; and (e) deal with data which may have multimodal distributions.
+
+Section \ref{sec:background} presents the background work on anomaly detection for temporal data, and the use of EVT in anomaly detection. Section \ref{sec:methodology} describes the new framework for the detection of anomalies in streaming data. It also proposes a way of handling non-stationary environments. Some simulations illustrating the method are presented in Section \ref{sec:experiment}. An application of the proposed framework is given in Section \ref{sec:application}. Section \ref{sec:conclusion} concludes the paper.
+
+
+# Background
+\label{sec:background}
+
+## Types of anomalies in temporal data
+\label{sec:anomtype}
+
+The problems of anomaly detection for temporal data are threefold: (a) the detection of contextual anomalies within a given series; (b) the detection of anomalous sub-sequences within a given series; and (c) the detection of anomalous series within a collection of series [@gupta2014outlier].
+
+Contextual anomalies within a given time series are single observations that are surprisingly large or small, independent of the neighboring observations. Figure \ref{fig:outtype}(a) provides an example. This is a well-known problem and has been addressed by many researchers in data science [@hayes2015contextual]. @burridge2006additive called these "additive outliers" and proposed an algorithm for their detection using EVT.
+
+In contrast, when considering the detection of anomalous subsequences within a given time series, the primary focus is not on individual observations, but on subsequences that are significantly different from the rest of the sequence. An example is given in Figure \ref{fig:outtype}(b).  Both these problems of detecting anomalous subsequences or additive outliers can be addressed either as univariate [@bilen2002wavelet] or multivariate problems [ @riani2009finding; @galeano2006outlier; @pena2001multivariate]. The algorithm proposed by @schwarz2008wind using EVT is also capable of detecting both types of outliers, and is derived from the work of @burridge2006additive.
+
+The final setting, the detection of anomalous series within a collection of series, is the primary focus of this paper. Figure \ref{fig:outtype}(c) provides an example of this scenario. Very little attention has been paid to this problem relative to the other two problem settings. An exception is @hyndman2015large who proposed a method using principal component analysis applied to time series features, together with highest density regions and $\alpha$-hulls, to identify unusual time series in a large collection of time series. The recent work of @wilkinsonvisualizing also has the capability to address problems of this nature.
+
+```{r outtype, fig.cap= "Different types of anomalies in temporal data. In each plot anomalies are represented by red color and black color is corresponding to the typical behavior", size= 'small', out.extra=''}
+```
+
+## Streaming data challenges
+
+Approaches to the problem of anomaly detection for temporal data can be divided into two main scenarios: (1) batch processing and (2) data streams [@faria2016novelty; @luts2014real]. With batch processing, as in @hyndman2015large and @wilkinsonvisualizing, it is assumed that the entire data set is available prior to the analysis, and the aim is to detect all of the anomalies present.
+
+The streaming data scenario poses many additional challenges, due to its complex nature and the way that the data evolve over time. Challenges include the large volume and high velocity of streaming data, the presence of very noisy signals, and nonstationary data distributions (or "concept drift"). The latter makes it difficult to distinguish between new "typical" behaviors and anomalous events. Addressing this issue requires the detecting algorithm to be able to learn from and adapt to the changing conditions. These challenges have made it difficult for the existing batch scenario approaches to provide early detection of anomalies in the streaming data context [@faria2016novelty].
+
+## Extreme value theory for anomaly detection
+\label{sec:evanom}
+
+Our proposed framework is based on extreme value theory (EVT), a branch of probability theory that relates to the statistical behavior of extreme order statistics [@galambos2013extreme].
+
+
+Let $\bm{X}= \{x_{1}, x_{2},\dots,x_{m}\}$ be a sequence of independent and identically distributed random variables with cumulative distribution function (CDF) $F$ and density function $f=F'$. Let $X_{\text{max}} = \max(\bm{X})$ and $x_{i} \in \Re$. The distribution of $X_{\text{max}}$ can be investigated by taking several random samples of size $m$ from a given distribution, recording the maximum of each sample, and constructing a density plot of the maxima. A similar approach can be used for the distribution of the minimum. Figure \ref{fig:EVDchange} (reproduced from [@hugueny2013novelty], p.87) shows the empirical distributions of minima and maxima for the standard Gaussian distribution (left), and of maxima for the standard exponential distribution (right) for series of sizes $m$. Each density plot is based on $10^6$ data points. Consider the case of $m=1$, where we observe only one data point from $f$ in each trial. The corresponding density plot approximates the generative distribution $f$, as the maximum of a singleton set $\{x\}$ is simply $x$. However, the density plots for maxima move to the right as $m$ increases, implying that the expected location of the sample maximum on the x-axis increases as more data are observed from $f$. Let $H^{+}$ denote the distribution function of $X_{\text{max}}$. This is termed the *extreme value distribution* (EVD), as it describes the expected location of the maximum of a sample of size $m$ generated from $f$ [@clifton2011novelty]. The Fisher-Tippett Theorem [@fisher1928limiting], which is the basis of classical EVT, explains the possibilities for this $H^{+}$.
+
+The following expression of the theorem has been adapted from Theorem 3.2.3 of @embrechts2013modelling, p.121; the notation has been changed for consistency.
+
+```{r EVDchange, fig.cap="Empirical distributions of $10^6$ minima and maxima for the standard Gaussian distribution (left), and of maxima for the standard exponential distribution (right). (Reproduced from Hugueny, 2013, p.87.)", fig.height = 4, fig.height = 4, fig.width = 8 , out.extra=''}
+```
+
+\ifdefined\theorem\else\newtheorem{theorem}{Theorem}\fi
+\begin{theorem}[Fisher-Tippett theorem, limit laws for maxima]{\label{thm:fisherTippet}}\hspace{3cm}\newline
+If there exists a centering constant $d_{m} (\in\Re)$ and a normalizing constant $c_{m} (>0)$, and some non-degenerate distribution function $H^{+}$ ('+' refers to the distribution of maxima) such that $c_{m}^{-1}(X_{\text{max}}-d_{m}) \stackrel{d}{\longrightarrow} H^{+},$ then $H^{+}$ belongs to one of the three distribution function types: Fr\'echet $\varPhi_{\alpha}^{+}(x)$, Weibull $\varPsi_{\alpha}^{+}(x)$ or Gumbel $\varLambda^{+}(x)$.
+\end{theorem}
+
+
+@embrechts2013modelling discuss some properties that assist in deciding the maximum domain of attraction (MDA) of $X$. If $f$ has a truncated tail, such as the uniform or beta distribution, then it is in the MDA of the Weibull distribution. If $f$ has an infinite tail that obeys the power law, then it is in the MDA of the \text{Fr\'echet} distribution. Examples include Pareto, F, Cauchy and log-gamma distributions. On the other hand, if $f$ has an exponentially decaying tail such as the exponential, gamma, normal or log-Normal distributions, then it is in the MDA of the Gumbel distribution. Interested readers are referred to the work of @embrechts2013modelling for a detailed discussion of the characterization of the three classes: \text{Fr\'echet}, Weibull and Gumbel.
+
+
+### Existing work for anomaly detection based on extreme value theory
+\label{sec:previousworkEVT}
+
+The literature to date has mostly defined anomalies in terms of either distance or density. When anomalies are defined in terms of distance, one would expect to see relatively large separations between typical data and the anomalies. @burridge2006additive, @schwarz2008wind and @wilkinsonvisualizing provide a few examples of this approach where observations with large nearest neighbor distances are defined as anomalies. Within this framework, the 'spacing theorem' [@schwarz2008wind] in EVT has been used in the model building process. In contrast, defining an anomaly in terms of the density of the observations means that an anomaly is an observation that has a very low chance of occurrence. The work of @perron2003searching, on which the method of @burridge2006additive was based, mentioned the possibility of using extreme value theory and non-parametric estimates of tail behavior, but did not provide any detailed discussion. @sundaram2009aircraft, @clifton2011novelty and @hugueny2013novelty provide a few examples where EVT has been used to find observations that have extreme densities. The main focus of these methods was on defining a threshold for the density of the data points such that it distinguishes between anomalies and typical observations.
+
+It can be seen from Theorem \ref{thm:fisherTippet} that the EVD is parameterized implicitly by $m$, the size of the sample from which the extrema is taken. Thus, different values of $m$ can yield different EVDs (Figure \ref{fig:EVDchange}). @clifton2011novelty proposed a numerical method for selecting a threshold for identifying anomalous points when $m\ge 1$. In their "$\Psi$ transform method", @clifton2011novelty define the "most extreme" of a set of $m$ samples $\bm{X}=\{x_{1}, x_{2},\dots, x_{m}\}$, distributed according to pdf $f(x)$, as the most improbable with respect to the distribution; i.e., $\text{arg\,min}_{x\in X}[f(x)]$.
+
+
+# Methodology
+\label{sec:methodology}
+
+This section proposes a new framework for anomaly detection in multivariate streaming time series based on the $\Psi$-transformation method proposed by @clifton2011novelty. The proposed framework involves: (1) building a model of the typical behavior of a given system; and (2) testing newly arrived data against the model of typical behavior. These two phases represent the *off-line* (Algorithm \ref{alg:algorithm-off}) and *on-line* (Algorithm \ref{alg:algorithm-on}) phases [@faria2016novelty] of the framework, respectively. Our proposed method is intended to overcome two limitations of the proposals of @hyndman2015large and @wilkinsonvisualizing.
+
+First, the method proposed by @hyndman2015large identifies the most unusual time series within a large collection of time series, whether or not any of them are truly anomalous. However, in our applications, an alarm should be triggered only in the presence of an anomalous event. Defining a boundary of typical behavior and monitoring new data points that land outside that boundary allows us to overcome this limitation as it now triggers an alarm only in the presence of an observation that lands outside the anomalous boundary.
+
+Second, the "HDoutliers" method proposed by @wilkinsonvisualizing relies on the assumption that the nearest-neighbor distances of anomalous points will be significantly higher than those between typical data points. However, some applications do not exhibit large gaps between typical observations and anomalies. Instead, the anomalies deviate from the majority, or the region of typical data, gradually, without introducing a large distance between typical and anomalous observations. This is the case, for example, where the time series are highly dependent.
+
+Consider a temperature-sensing fiber optic cable attached to a gas pipeline for the detection of gas leakages. The escape of pressurized gas changes the temperature not only at the point of the leak, but also at neighboring points, with a gradually decaying magnitude. Consequently, the observed time series will be highly dependent, with multiple anomalous points that deviate gradually from the typical behavior, without introducing a large distance between the anomalies and the typical observations.
+
+Figure \ref{fig:sensortypes} illustrates this point, with panel (c) showing a large collection of time series obtained via independent sensors. For each series, we compute a vector of features which are then reduced to two principal components, plotted in panel (a). (The process of generating a feature space from a collection of time series is discussed in Algorithm \ref{alg:algorithm-off}). The two isolated points shown in black correspond to two anomalous series, and have relatively large nearest-neighbor distances compared to the typical observations shown in yellow. These large nearest-neighbor gaps allow the HDoutliers method to identify the two points as anomalies. In contrast, panel (b) represents a feature space that corresponds to a collection of time series obtained via sensors that are dependent. The corresponding multiple parallel time series plot is given in panel (d). In the example on the right, Figure \ref{fig:sensortypes}b, the anomalous points are not widely separated from the typical points in the feature space. As the HDoutliers algorithm identifies anomalies only using the nearest neighbor distances, and there is no substantial difference between the anomalous points and the typical points, it would fail to detect these anomalous points. However, with respect to density we can see a clear separation between the anomalous points (corresponding to the low density region) and the typical points (which correspond to higher density regions) (Figure \ref{fig:sensortypes}b). Therefore, density based approaches are more appropriate for us to choose a suitable anomalous threshold on the feature space.
+
+Thus, we assume that anomalies have very low density values compared to those of typical points. To determine the appropriate anomalous density threshold, we use EVT taking account of the number of observations in order to properly control the probability of false positives [@clifton2011novelty].
+
+
+```{r sensortypes, cache = TRUE, fig.cap="Left panel corresponding to a collection of time series obtained via independent sensors. Right panel corresponding to a collection of time series obtained via sensors that are not independent to one another. Black: high values, Yellow: low values. Black dots/lines/shapes are corresponding to anomalous event."}
+```
+
+Our proposed method requires a representative dataset of the system's typical behavior. Since, by definition, anomalies are rare in comparison to a system's typical behavior, the majority of the available data must represent the given system's typical behavior. It is not necessary to have representative samples of all possible types of typical behaviors of a given system in order for the proposed algorithm to perform well. The principal idea is to have a warm-up dataset from which to obtain starting values of the parameters of the decision model.
+
+## Algorithm of the proposed framework for streaming data
+\label{sec:algorithm1}
+
+\newtheorem{algo}{Algorithm}
+\begin{algo}[Off-line phase: Building a model of the typical behavior] {\label{alg:algorithm-off}}
+\end{algo}
+
+\vspace{-0.5em}
+
+\textbf{Input:}
+$D_{norm}$, a collection of  $m$  time series (which can be of either equal or different lengths) that are generated under the typical system behavior.
+
+\textbf{Output:} $t^{*}$, anomalous threshold.
+
+\vspace{-0.5em}
+
+1. Extract  $k$ features (similar to @fulcher2012highly and @hyndman2015large) from each time series in $D_{norm}$. This produces an  $m\times k$  feature matrix, $M$. Each row of $M$ corresponds to a time series and each column of $M$ corresponds to a feature type.  This feature-based representation of time series has many advantages. In this work our features have ergodic properties and are intended to measure attributes associated with non-stationarity of the time series [@kang2018efficient]. Therefore our proposed framework is well-suited for a large diverse set of time series. Further, a feature based representation of time series allows us to compare time series of different lengths and/or starting points, as we transform time series of any length or starting point into a vector of features of fixed size. It also reduces the dimension of the original multivariate time series problem via features that encapsulate the dynamic properties of the individual time series.  Of the 14 features $(k = 14)$  used in this work, eight (mean, variance, changing variance in the remainder (*lumpiness*), level shift using a rolling window (*lshift*), variance change (*vchange*), strength of linearity (*linearity*), strength of curvature (*curvature*), and strength of spikiness (*spikiness*)) were selected from @hyndman2015large. Following @fulcher2012highly, the remaining five features were defined as follows: the burstiness of the time series (Fano factor; *BurstinessFF*), minimum, maximum, the ratio of the interquartile mean to the arithmetic mean (*rmeaniqmean*), the moment, and the ratio of the means of the data that are below and above the global mean (*highlowmu*). Figure \ref{fig:tsfeatures} provides a feature-based representation of the time series of Figure \ref{fig:mvtsplot1}.
+
+2. Since different operations produce features over different ranges, normalize the columns of the resulting $m\times k$  feature matrix, $M$. Let $M^{*}$ represent the resulting $m\times k$  feature matrix.
+
+3. Apply principal component analysis to the feature matrix $M^{*}$.
+
+4. Define a two-dimensional space using the first two principal components (PC) from step 3 (similar to @hyndman2015large and @kang2017visualising). Hereafter, the resulting two-dimensional PC space is referred to as the *2D PC space*. This *2D PC space* now contains $m$ instances. Each instance on this *2D PC space* corresponds to a time series in $D_{norm}$. We selected only the first two PCs to maximize our chances of obtaining insights via visualization [@kang2017visualising]. 
+
+5. Estimate the probability density of this *2D PC space* using kernel density estimation with a bivariate Gaussian kernel (similar to @luca2014detecting; @cuppens2014accelerometry). Let $\hat{f}_{2}$ denote the estimated probability density function. 
+
+6. Draw a large number $N$ of extremes (as defined in @clifton2011novelty) from $\hat{f}_{2}$, and form an empirical distribution of their densities in the $\Psi$-transform space, where the $\Psi$-transform of the extrema $\mathbf{x}$ is defined as
+$$
+  \Psi[{f_{2}}(\mathbf{x})]=\;
+        \begin{cases}
+        (-2ln({f_{2}}(\mathbf{x}))-2ln(2\pi))^{1/2},& {f_{2}}(\mathbf{x}) < (2\pi)^{-1}\\
+        0,              & {f_{2}}(\mathbf{x}) \ge (2\pi)^{-1}.
+        \end{cases}
+$$
+The number of instances of which we consider the extremes is $m$, i.e. the number of time series in the original collection $D_{norm}.$ 
+
+7. Fit a Gumbel distribution to the resulting $\Psi[{f_{2}}(\mathbf{x})]$ values [@clifton2011novelty; @hugueny2013novelty]. The Gumbel parameter values are obtained via maximum likelihood estimation.
+
+8. Determine the anomalous threshold using the corresponding univariate CDF, $F_{2}^{e}$ in the transformed $\Psi$-space and thereby define a contour $t^{*}$ in the *2D PC space* that describes where the most extreme of the $m$ typical samples generated from $f_{2}$ will lie, to some level of probability (e.g., 0.999) [@farrar2012structural].
+
+
+```{r tsfeatures_generate}
+```
+
+```{r tsfeatures, fig.cap= "Feature based representation of the time series in Figure 1. There are 640 time series (m = 640). Each plot is corresponding to a feature type extracted from the 640 time series (k=14). Almost all the features have captured the unusual event near the right end point of the cable (around 350 to 550).", cache=TRUE}
+knitr::include_graphics("figure/tsfeatures.png")
+```
+
+As recommended by @jin2007frequent, a sliding window model is used to handle the streaming data context. Given $w$ and $t$, which represent the length of the sliding window and the current time point, respectively, our aim is now to identify time series that are anomalous relative to the system's typical behavior. The sliding window keeps moving forward with the current time point, maintaining its fixed window length $w$. As a result, the model ignores all data that were received before time $t-w$. Furthermore, each data element expires after exactly $w$ time steps.
+
+\begin{algo}[On-line phase: Testing newly-arrived data] {\label{alg:algorithm-on}}
+\end{algo}
+\vspace{-0.5em}
+
+\textbf{Input:}
+$W[t-w,t]$, the current sliding window with  $m$  time series. $t^{*}$, anomalous threshold from Algorithm \ref{alg:algorithm-off}.
+
+\textbf{Output:} A vector of indices of the anomalous series within the time window $W[t-w,t]$
+
+\vspace{-0.5em}
+
+1. Extract  $k$  features (the features defined in step 1 of Algorithm \ref{alg:algorithm-off}) from each of the $m$ time series in $W[t-w,t]$. This produces an  $m\times k$  feature matrix $M_{test}$.
+
+2. Project this new feature matrix, $M_{test}$, on to the same the *2D PC space* of the typical data that was built using the time series in $D_{norm}$. Let $\bm{Y} = y_{1}, y_{2},\dots,y_{m}$ represent data points that are obtained by projecting $M_{test}$ on this *2D PC space*.
+
+3. Calculate the probability density values of $\bm{Y}$  with respect to $\hat{f}_{2}$ in step 5 of Algorithm \ref{alg:algorithm-off}.
+
+4. Find any $y_{j}$ that satisfies $\hat{f}_{2}(y_{j}) < t^{*}$, where  $j=1,2,\dots,m$, and mark the corresponding time series (if any) as anomalous within the time window $W[t-w,t]$.
+
+5. Repeat steps 1 - 4 of the on-line phase for every new time window that is generated by the current time point, $t$.
+
+
+
+## Handling non-stationary environments
+\label{sec:handlingconceptdrift}
+
+The distribution of the typical behavior of a given system can change over time due to many reasons such as sensor drift, cyclic variations, seasonal changes, lack of maintenance as sensors are deployed in harsh, unattended environments, etc. [@moshtaghi2014streaming; @o2014anomaly]. In such situations, current behavior might not be sufficiently representative of future behavior [@chandola2009anomaly]. Therefore it is important that our algorithm is adaptive and robust against these changes of the typical behavior over time. @cuppens2014accelerometry highlight the importance of this and mention it as a possible extension of their proposed algorithm.
+
+In the statistics literature, this is known as non-stationarity, and it can occur in many different forms. According to @o2014anomaly, if a system has a stationary data distribution, the model from which to identify anomalies only needs to be constructed once. However in an environment with a non-stationary data distribution, it is necessary to regularly update the model in order to account for changes in the data distribution. In the econometrics literature, these non-stationary environments are sometimes classified as either "structural breaks" or "time-varying" evolutionary change [@rapach2008structural]. In the machine learning literature, this phenomenon is known as "concept drift", and @gama2014survey and @faria2016novelty describe four classes: sudden, incremental, gradual and reoccurring.
+
+According to @gama2013evaluating, there are two approaches that can be used to adapt models in order to deal with nonstationary data distributions: blind and informed. Under the blind approach, the decision model is updated at regular time intervals without considering whether a change has really occurred or not, as in @zhang2010ensuring. This is done under the assumption that the data distribution is non-stationary [@o2014anomaly]. In contrast, the informed approach updates the decision model only if a change in the data distribution is detected [@faria2016novelty]. Under this approach the goal is to identify a time at which the data distribution changes enough to justify a model update and thereby reduce the computational complexity of the algorithm. In @o2014anomaly these two approaches are termed 'constant update' and 'detect and retrain', respectively. According to @rodriguez2008combining, the former strategy is useful with gradual changes while the latter is useful with abrupt changes. The informed approach proposed by @zhang2010ensuring, updates the model of the typical behavior only when an outlier or boundary point is detected, under the assumption that they can make a significant impact on the previous model of typical behavior. However, an outlier or boundary point may not always cause a significant change in the data distribution. @moshtaghi2014streaming declare a change in the typical behavior when the number of consecutive anomalies detected by the algorithm exceeds a predefined threshold. Since this involves a user defined threshold, it is highly subjective and does not involve a valid probabilistic interpretation.
+
+Following the definition of @dries2009adaptive, we propose an informed approach for early detection of non-stationarity that uses statistical distance measures to measure the distance between the distribution of the *2D PC space* generated from the collection of typical time series in which the latest model is defined and that generated from the typical series in the current test window. This allows us to detect whether there is any significant difference between the latest typical behavior and the new typical behavior. In an occurrence of a significant change in the data distribution, an update to the model is done using the more recent data under the assumption that data are temporally correlated, with correlation increasing as temporal distance decreases [@o2014anomaly].
+
+
+\begin{algo}[Detection of non-stationarity] {\label{alg:algorithm-concept}}
+\end{algo}
+\vspace{-0.5em}
+
+\textbf{Input:} $w$, length of the moving window. $D_{t_{0}}$, collection of $m$  time series of length $w$ that are generated under the latest typical behavior of a given system in which the current decision model is defined. $W$, test stream.
+
+\textbf{Output:} A vector of indices of the anomalous series in each window
+\vspace{-0.5em}
+
+1. Estimate $f_{t_{0}}$, the probability density of the *2D PC space* defined by $D_{t_{0}}$, using kernel density estimation with a bivariate Gaussian kernel.
+
+2. Let $W[t-w, t]$ be the current test window with  $m$  time series of length $w$. Extract  $k$  features (the same features as were defined in step 1 of Algorithm \ref{alg:algorithm-off}) from each of these $m$  time series in $W[t-w, t]$. This produces an  $m\times k$ feature matrix, $M_{test}$.
+
+3. Project $M_{test}$, onto the *2D PC space* of $D_{t_{0}}$. Let  $\bm{Y}_{t}$ represent the newly projected data points on the *2D PC space* that correspond to $W[t-w, t]$.
+
+4. Identify the data points on the *2D PC space* that correspond to the typical series in $W[t-w, t]$, using the anomalous threshold (output of Algorithm \ref{alg:algorithm-off}) defined using $D_{t_{0}}$. Let  $\bm{Y}_{t_{\text{norm}}} (\subseteq \bm{Y}_{t})$}  represent the set of data points in *2D PC space* that correspond to the typical series of $W[t-w, t]$, and $W[t-w, t]_{norm} (\subseteq W[t-w, t])$ be the corresponding set of typical time series in $W[t-w, t]$.
+
+5. Let $p$ be the proportion of anomalies detected in $W[t-w, t]$. If $p < p^{*}$, where $p^{*} > 0.5$, go to step (a); otherwise, go to step (b). In the examples given in this manuscript, $p^{*}$ is set to 0.5, assuming the simple 'majority rule'. However, the user also has the option of selecting a cutoff point other than the default 0.5 in order to maximize the accuracy or incorporate misclassification costs.
+
+\vspace{-1em}
+
+  a. Estimate $f_{t_{t}}$, the probability density function of $\bm{Y}_{t_{\text{norm}}}$, using kernel density estimation with a bivariate Gaussian kernel. Let $\hat{f}_{t_{t}}$ denote the estimated probability density function.
+  b. Estimate $f_{t_{t}}$, the probability density function of  $\bm{Y}_{t}$, using kernel density estimation with a bivariate Gaussian kernel. Let $\hat{f}_{t_{t}}$ denote the estimated probability density function. In the case of a 'sudden' change, all (or most) of the points in  $\bm{Y}_{t}$ may lie outside the anomalous boundary, defined by $D_{t_{0}}$. As a result, all (or most) of those points in $\bm{Y}_{t}$  will be marked as anomalies, meaning that the  majority (> 0.5) is now represented by the detected anomalies. This could indicate the start of a new typical behavior. Thus, it is recommended in this situation that the decision model be updated using all of the series in the  current window (instead of only the typical series detected, which now represent the minority), thereby allowing the model to adapt to the changing environment automatically. This situation is elaborated further using the synthetic datasets given in Figures \ref{fig:sudden}, \ref{fig:gradual} and \ref{fig:reoccurring} in Section \ref{sec:experiment_concept}.
+
+\vspace{-1em}
+
+6. Using a suitable distance measure (e.g., the Kullback-Leibler distance, the Hellinger distance, the total variation distance, or the Jensen-Shannon distance), test the null hypothesis $H_{0}: f_{t_{0}} = f_{t_{t}}$. Since the distributions of these distance measures are unknown, bootstrap methods can be used to determine critical points for the test [@anderson1994two]. However, these computationally intensive re-sampling methods may prevent changes in distributions from being detected quickly, which is a fundamental requirement of most of the applications of our streaming data analysis. Therefore, following  @duong2012closed, we test the null hypothesis $H_{0}: f_{t_{0}} = f_{t_{t}}$ here by using the squared discrepancy measure $T = \int [f_{t_{0}}(x) - f_{t_{t}}(x)]^2dx$, which was proposed by @anderson1994two. Since the test statistic based on the integrated squared distance between two kernel based density estimates  of the *2D PC space* is asymptotically normal under the null hypothesis, it allows us to bypass the   computationally intensive calculations that are used by the usual re-sampling techniques for computing the critical quantiles of the null distribution.
+
+7. If $H_{0}$ is rejected and $p < p^{*}$, $D_{t_{0}}$ is set to $W[t-w, t]_{norm}$. If $H_{0}$ is rejected and $p > p^{*}$, $D_{t_{0}}$ is set to $W[t-w, t]$.
+
+8. Repeat steps 1--7 for every new time window that is generated by the current time point $t$.
+
+
+# Experiments
+\label{sec:experiment}
+
+The effectiveness of the proposed frameworks for anomaly detection in the streaming data context is first evaluated using synthetic data (these datasets are available online in supplemental materials). When generating these synthetic datasets, care has been taken to imitate situations such as applications with multimodal typical classes, different patterns of non-stationarity, and noisy signals. However, we acknowledge that the set of examples that we have used for this discussion is relatively limited, meaning that these examples should be viewed only as simple illustrations of the  proposed algorithms. We hope that the set of examples will grow over time as the performances of the proposed algorithms are investigated further.
+
+We also performed an experimental evaluation of the accuracy of our proposed framework. All the experiments (Figure \ref{fig:sim2}--\ref{fig:incremental}) were evaluated using common measures for binary classification such as accuracy, false positive (FP) rate and false negative (FN) rate. According to @hossin2015review, these measures are not enough to measure the performance of the binary classification tasks on imbalanced datasets. Since our example datasets are highly imbalanced and are negatively dependent (i.e., containing many more typical points than anomalous points), we also recorded two additional measures which are recommended for imbalanced binary classification problems: optimized precision (OP) which remains relatively stable even in the presence of large imbalances in the data [@ranawana2006optimized], and positive predictive value (PPV) which measures the probability of a positively predicted pattern actual being positive (outlier). Very low PPV values can be observed for certain rolling windows in Figure  \ref{fig:sim2}(d)--\ref{fig:incremental}(d), as those windows are free from true positives (anomalous events) and that lead the PPV value to become zero for the corresponding moving windows.
+
+## Detection of anomalies in the streaming data scenario
+\label{sec:stationary_case}
+
+Our leading example shown in Figure \ref{fig:sim2}(a) aims to demonstrate the application of Algorithms \ref{alg:algorithm-off} and \ref{alg:algorithm-on}. In this example it is assumed that the typical behavior of the given system has a stationary data distribution and does not change over time. In other words it is assumed that the training set is drawn from a stationary data distribution and the testing stream will also be drawn from the same distribution. Therefore the dataset is generated using a Gaussian mixture of two components with different means but equal variance such that the *2D PC space* generated by the collection of series consists of a bi-modal typical class throughout the entire period. We make the anomaly detection process more challenging by generating these time series with noisy signals. The corresponding side view of the dataset is given in Figure \ref{fig:sim2}(b), and demonstrates both the nature of the noisy signals and the progress and structure of the anomalous event in the 400--1000 time period.  Due to the assumption of stationarity, the anomalous threshold was set only once at $F_{2}^{e} = 0.999$ using $W[1, 150]$. The anomalies detected in window $W[151, 300]$ are marked at $t=300$ in Figure \ref{fig:sim2}(c), then the sliding window is moved one step forward to test for anomalies in $W[152, 301]$. This process is repeated for every new time window generated by sliding the window one step forward. Over time, the grid in Figure \ref{fig:sim2}(c) is filled gradually from left to right with the output produced by each sliding window.
+
+```{r generate_sim2, eval = FALSE}
+```
+
+```{r label_sim2, eval = FALSE}
+```
+
+```{r generate_out_sim_2, eval = FALSE}
+```
+
+```{r sim2_analysis, eval = FALSE, echo=FALSE}
+```
+
+```{r sim2, cache = TRUE, fig.cap= "Multimodal typical classes but no non-stationarity. Sliding window length = 150 time points. To initiate the algorithm, $W[1,150]$ is considered as a representative sample of the typical behavior. a) Multivariate time series plot of the collection of time series ($m = 300$). The upper half of the figure (dark yellow) corresponds to one typical class, while the lower half of the figure (bright yellow) corresponds to the other typical class. b) Multivariate time series plot (side view of panel a)). c) The output produced by the sliding window approach. The anomalous threshold was set at $F_{2}^{e} = 0.999.$  d) Performance of the proposed framework (without any adjustments to non-stationary environments). Overall optimized precision is 0.9904. Minimum accuracy is 0.956 (at $t = 887$). Maximum FP rate is 0.044 (at $t=887$). Maximum FN rate is 0.014 (at $t=520$)."}
+```
+
+Since the anomalous event in this dataset is placed at $t = 400$, ideally we would expect Algorithm \ref{alg:algorithm-off} and \ref{alg:algorithm-on} to detect it when the sliding window reaches $W[250, 400]$. In Figure \ref{fig:sim2}(c), the anomalies detected are marked in black. As expected, Algorithms \ref{alg:algorithm-off} and \ref{alg:algorithm-on} were able to detect the anomalous event right from the beginning; that is, as soon as the moving window reaches $W[250, 400]$. However, even though the anomalous event actually ends at $t = 1000$, as seen in Figure \ref{fig:sim2}(a), the resulting output in Figure \ref{fig:sim2}(c) shows that it generates an alarm until $t = 1150$. This is due to the use of a moving window of length 150, which means that the sliding window covers at least part of the anomalous event until it reaches $W[1000, 1149]$. Thus, the proposed algorithm generates an alarm until it reaches a window that is completely free of the anomalous event; in this case, it stops generating an alarm once it reaches $W[1001, 1151]$. This behavior of the proposed algorithm increases the FP rate immediately after the end of any anomalous event. However, in applications such as intrusion attacks to secured premises, gas/oil pipeline leakages, etc., there is no harm in generating an alarm immediately after an anomalous event ends, as this helps to capture the attention of the people who are responsible for taking the necessary action.
+
+A sensor cable attached to a security fence for detecting intruders is one plausible application that could give rise to this type of dataset. For example, if one half of the fence is exposed to sea wind and the other half is protected by trees and buildings, this will give rise to two typical behaviors for the two halves of the same cable, as the environmental behavior can have an impact on the internal structure of the sensor cable. Similar behavior can be expected from a fiber optic cable laid along a stream for detecting water contamination. The movement of the water can have an impact on the internal structure of the sensor cable, thereby giving rise to a collection of series with multimodal typical classes at different locations along the sensor cable. For all the examples discussed under Section \ref{sec:experiment}, the average accuracy is calculated  by taking the ratio of the number of correctly classified series to the total number of series of each moving window generated by the current time point. As can be seen from Figure \ref{fig:sim2}(d), our algorithm shows a 0.992 accuracy level on average for this dataset (Optimized precision is 0.9904), while maintaining low FP (0.0076 on average) and FN (0.000 on average) rates.
+
+One-class support vector machine (OCSVM) is a commonly used  method in anomaly detection research [@ma2003time; @mahadevan2009fault; @rajasegarar2010centered]. @raskutti2004extreme and @zhuang2006parameter have proposed improved versions of OCSVM for imbalanced data where the minority class (abnormal class) is specifically targeted in the classification. However if minorities are difficult or expensive to obtained and defined OCSVM for imbalanced data is not among the best candidates for anomaly detection due to unavailability of enough instances from the abnormal class to properly train an OCSVM. Further, @luca2014anomaly highlight some limitations with OCSVM when more than one data point is observed that involves multiple hypothesis testing. Since our method does not have a direct competitor, we compared our results with  HDoutliers algorithm. In each test phase HDoutliers algorithm was applied to the high dimensional space generated by the 14 features introduced in step 1 of Algorithm 1. For this dataset in Figure \ref{fig:sim2} (a) it  gives a 0.988 accuracy level on average. The reported OP of 0.5356 is much lower than that of our method (Figure \ref{fig:sim2}).
+
+
+## Anomaly detection with non-stationary environments
+
+\label{sec:experiment_concept}
+
+We now investigate the performances of Algorithm \ref{alg:algorithm-concept} together with Algorithms \ref{alg:algorithm-off} and \ref{alg:algorithm-on}  using four synthetic datasets. Following @gama2014survey, these synthetic datasets are generated such that they exhibit the four different types of non-stationarity: *sudden* (a sudden switch from one distribution to another), *gradual* (trying to move to the new distribution gradually while going back and forth between the previous distribution and the new distribution for some time), *reoccurring* (a previously seen distribution reoccurs after some time) and *incremental* (there are many, slowly-changing intermediate distributions in between the previous distribution and the new distribution). The corresponding graphical representations of these four cases are given in Figures \ref{fig:sudden}, \ref{fig:gradual}, \ref{fig:reoccurring} and \ref{fig:incremental}, respectively. In Figure \ref{fig:sudden}(a), the anomalous event is placed in the 150th to 170th series over the time period from $t = 450$ to $t= 475$. In Figure \ref{fig:gradual}(a), the anomalous event is placed in the 150th to 170th series over the time period from $t = 850$ to $t= 875$. In the remaining cases (Figures \ref{fig:reoccurring} and \ref{fig:incremental}), the anomalous event is placed in the 150th to 170th series over the time period from $t = 825$ to $t= 875$. In all of these cases, non-stationary behavior starts to occur from $t=300$.
+
+
+
+```{r generate_simulate_7, eval = FALSE}
+```
+```{r label_simulate_7, eval = FALSE}
+```
+```{r generate_out_simulate_7, eval = FALSE}
+```
+```{r sudden_analysis, eval = FALSE}
+```
+```{r sudden, cache = TRUE, fig.cap= "`Sudden' non-stationarity.  a) Multivariate time series plot of the collection of time series ($m = 300$). 'Sudden' non-stationarity starting from t =300.  b) Multivariate time series plot (side view of panel a)). c) The output produced by the sliding window approach. In the test phase the anomalous threshold is updated for nonstationary behavior according to Algorithm 3  d) Performance of the proposed framework. Overall optimized precision is 0.9234.  Minimum accuracy is 0.0167 (at $t = 301$). Maximum FP rate is 0.983 (at $t=301$). Maximum FN rate is 0.0033 (at $t=450$)." , fig.pos="!bp" ,out.extra = ''}
+```
+
+
+```{r generate_simulate_10, eval = FALSE}
+```
+```{r label_simulate_10, eval = FALSE}
+```
+```{r generate_out_simulate_10, eval = FALSE}
+```
+```{r gradual_analysis, eval = FALSE}
+```
+```{r gradual, cache = TRUE,  fig.cap= "'Gradual' non-stationarity.  a) Multivariate time series plot of the collection of time series ($m = 300$). 'Gradual' non-stationarity starting from t =300.  b) Multivariate time series plot (side view of panel a)). c) The output produced by the sliding window approach. In the test phase the anomalous threshold is updated for nonstationary behavior according to Algorithm 3  d) Performance of the proposed framework. Overall optimized precision is 0.9601.  Minimum accuracy is 0.0167 (at $t = 301$). Maximum FP rate is 0.983 (at $t=301$). Maximum FN rate is 0.04 (at $t=850$). " , fig.pos="!tbp" , out.extra = ''}
+```
+
+
+```{r generate_simulate_11, eval = FALSE}
+```
+```{r label_simulate_11, eval = FALSE}
+```
+```{r generate_out_simulate_11, eval = FALSE}
+```
+```{r reoccurring_analysis, eval = FALSE}
+```
+```{r reoccurring, cache = TRUE, fig.cap= "`Reoccuring' type non-stationarity. a) Multivariate time series plot of the collection of time series ($m = 300$). `Reoccuring' type non-stationarity starting from t =300.  b) Multivariate time series plot (side view of panel a)). c) The output produced by the sliding window approach. In the test phase the anomalous threshold is updated for nonstationary behavior according to Algorithm 3  d) Performance of the proposed framework. Overall optimized precision is 0.9426. Minimum accuracy is 0.0067 (at $t = 300$). Maximum FP rate is 0.993 (at $t=300$). Maximum FN rate is 0.0633 (at $t=825$). " , fig.pos="!tbp", out.extra = ''}
+```
+
+
+
+```{r incremental, cache = TRUE,  fig.cap= " 'Incremental' non-stationarity.a) Multivariate time series plot of the collection of time series ($m = 300$). 'Incremental' non-stationarity starting from t =300.  b) Multivariate time series plot (side view of panel a)). c) The output produced by the sliding window approach. In the test phase the anomalous threshold is updated for nonstationary behavior according to Algorithm 3  d) Performance of the proposed framework. Overall optimized precision is 0.953.  Minimum accuracy is 0.83 (at $t = 576$). Maximum FP rate is 0.17 (at $t=576$). Maximum FN rate is 0 (at $t=201$)." ,fig.pos="!tbp", out.extra = ''}
+
+```
+
+
+
+In the first three cases, namely *sudden* (Figure \ref{fig:sudden}), *gradual* (Figure \ref{fig:gradual} and *reoccurring* (Figure \ref{fig:reoccurring}), when the sliding window reaches the $t=300$ time point (i.e., $W[201, 300]$), the decision model declares almost all points in that window as anomalies. As a result, $p$, the proportion of outliers detected in $W[201, 300]$, exceeds the user-defined threshold $p*$ (set here to 0.5, based on the simple 'majority rule'). Following step 5(b) of Algorithm \ref{alg:algorithm-concept}, the decision model is now updated using all of the series in that window, rather than just the detected 'typical' series which now represent the minority. This step allows the decision model to adjust to the new typical behavior if it continues to exist for a given period of time. As can be seen in plots (c) and (d) of Figures \ref{fig:sudden}, \ref{fig:gradual} and \ref{fig:reoccurring}, the decision model initially declares almost all of the series as anomalies when the non-stationarity starts to occur, but ceases to claim them as anomalies once the new pattern is established and continues to exist. After the decision model has adapted fully to the new distribution, it again starts to produce results with a high level of accuracy, while maintaining low levels of FP and FN rates.
+
+In contrast, none of the sliding windows in our analysis of the dataset given in Figure \ref{fig:incremental}(a) declare more than half of the series to be outliers. Thus, the model updating process is done based on step 5(a) of Algorithm \ref{alg:algorithm-concept} using only the typical series detected for each window. As can be seen in Figure \ref{fig:incremental}(d), our proposed framework (Algorithms \ref{alg:algorithm-off}, \ref{alg:algorithm-on}, \ref{alg:algorithm-concept}), shows an average level of accuracy of 0.969 (overall optimized precision 0.953) for the entire period, while maintaining low FP (0.031 on average) and FN (0.000 on average) rates during the time period under consideration.
+
+```{r conceptdrift, cache = TRUE,  fig.cap="Detection of non-stationarity. Top panel: P value for the hypothesis test $H_0: f_{t_{0}} = f_{t_{t}}$. In these examples the significance level is set to 0.1 and is marked by the horizontal line in each plot. Bottom panel: Anomalous threshold.", out.extra = '',fig.pos="!htbp", out.width='100%', fig.height=5}
+```
+
+Figure \ref{fig:conceptdrift} illustrates the change in distribution over time via the $p$-value of the hypothesis test $H_{0}: f_{t_{0}} = f_{t_{t}}$ explained in step 6 of Algorithm \ref{alg:algorithm-concept} (top panel) and the anomalous threshold (bottom panel). In all these cases, Algorithm \ref{alg:algorithm-concept} is able to detect the occurrence of the non-stationarity right from the beginning at time point $t =300$, while maintaining a very low FP rate (i.e., claiming the occurrence of non-stationarity when there is no actual change in the distribution) once the model has adjusted to the new distribution. As explained in Section \ref{sec:experiment_concept}, the anomalous threshold requires updating only if the null hypothesis $H_{0}: f_{t_{0}} = f_{t_{t}}$ is rejected; that is, if a significant change in the typical behavior is detected. Thus, our proposed 'informed' approach for the detection of non-stationarity allows quicker decisions than the 'blind' approach, as it removes the requirement that the decision model be updated at each time interval.
+
+In all of these examples, the length of the sliding window is set to 100. In each example, we obtain the initial value for the anomalous threshold by considering the first window generated by $W[1, 100]$ as a representative sample of the typical behavior of the corresponding dataset.
+
+
+# Application
+\label{sec:application}
+
+We apply our proposed Algorithms \ref{alg:algorithm-off}, \ref{alg:algorithm-on} and \ref{alg:algorithm-concept} to datasets obtained using fiber optic sensor cables attached to a system. (Since the data contain commercially sensitive information, this paper does not reveal the actual application). Figure \ref{fig:realanalysisplots}(a)--(c) shows the multiple parallel time series plots of three datasets. Our goal is to detect these anomalous events (such gas/oil pipeline leakages, intrusion attacks to secured premises, water contaminated areas, etc.) as soon as they start.
+
+
+```{r realanalysisplots,dependson="ph", cache = TRUE, fig.cap= "Application (Application 1: m = 640, Application 2: m = 1000, Application 3: m = 2500). Left panel: (black: high values, yellow: low values, black shapes are corresponding to anomalous events). Right panel: (black: outliers, gray: typical behavior)", fig.pos="h", out.width='100%'}
+```
+
+```{r conceptreal, cache=TRUE, fig.cap="Detection of non-stationarity. Top panel: P value for the hypothesis test $f_{to} = f_{tt}$. In these examples the significance level is set to 0.1 and is marked by the horizontal line in each plot. Bottom panel: Anomalous threshold.", fig.height=5}
+```
+
+As explained in Section \ref{sec:methodology}, our proposed algorithm requires a representative sample of the typical behavior of each of these datasets in order to obtain a starting value for the anomalous threshold. However, no representative samples of the corresponding systems' typical behaviors are available for these examples. Thus, we select $W[1, 100]$ for the first two examples (Figure  \ref{fig:realanalysisplots}(a),(b)) and $W[1, 50]$ for the third example (Figure \ref{fig:realanalysisplots}(c)) as the representative sample of the typical behavior in order to get an initial value for the anomalous threshold.
+
+Even though no proper representative sample of the typical behavior was available for any of these cases, our proposed Algorithm \ref{alg:algorithm-concept} for the detection of non-stationary data distributions allows the model to adjust to the system's typical behavior over time. Figure \ref{fig:conceptreal} gives the corresponding $p$-values for the hypothesis test $H_{0}: f_{t_{0}} = f_{t_{t}}$ explained in step 6 of Algorithm \ref{alg:algorithm-concept} (top panel) and the anomalous threshold (bottom panel). The right panel of Figure \ref{fig:realanalysisplots} gives the output from applying Algorithms \ref{alg:algorithm-off}, \ref{alg:algorithm-on} and \ref{alg:algorithm-concept}. Since there is no "truth" for comparison, graphical representations are used to evaluate the performances of the proposed algorithms on these datasets. It can be seen from Figure \ref{fig:realanalysisplots}(d)--(f) that all of the anomalous events have been captured by the proposed algorithm right from the start. The resulting outputs also follow the shapes of the actual anomalous events.
+
+As explained in Section \ref{sec:stationary_case}, here also we observe a horizontal elongation of anomalous events of the resulted outputs (Figure \ref{fig:realanalysisplots}(d)--(f))  as the algorithm produces an alarm until it reaches a window that is completely free of the anomalous events. Due to this lag effect the anomalous events in the resulted outputs (Figure \ref{fig:realanalysisplots}(d)--(f)) also look wider in comparison to the corresponding actual anomalous events (Figure \ref{fig:realanalysisplots}(a)--(c)). However this broadening happens only in the direction of time and not in the direction of the sensor ID. This lag effect in the direction of time could be a merit for certain applications such as detection of intruders into secured premises, as the system continues to generate an alarm for certain period even after the actual event that allows to drag the attention of responsible people for necessary actions.
+
+Although the anomalous events are correctly detected by our proposed framework, in comparison to Applications 2 and 3 (Figure \ref{fig:realanalysisplots}(c), (d)), Application 1 (Figure \ref{fig:realanalysisplots}(a)) shows some false positives (the isolated extra black stripes). This can be explained by Theorem \ref{thm:fisherTippet} and Figure \ref{fig:EVDchange}. As can be seen in Figure \ref{fig:realanalysisplots}(a), Application 1 contains a small number of time series ($m \approx600$ time series) in comparison to Applications 2 and 3. According to step 5 of Algorithm 3, in the presence of non-stationarity, the detected anomalous points are removed and only the typical points are used to update the anomalous threshold. If the detected proportion of anomalous series is high with respect to the total number of series in the collection of time series, then the new anomalous threshold could be based on a significantly different EVD (Figure \ref{fig:EVDchange}) and thereby could lead to a higher number of false positives. But as $m$ (the number of series in the collection) increases (as in Applications 2 and 3) the proportion of anomalous series in each window becomes very small and therefore the change in the EVD is negligible which reduces the rate of false positives as in Application 2 and 3 (Figure \ref{fig:realanalysisplots}(e), (f)). Therefore, our proposed framework is particularly well suited for the applications described in Section \ref{sec:intro}, which generate large collections of time series. 
+
+
+# Conclusions and Further Work
+\label{sec:conclusion}
+
+This paper proposes a methodology for the detection of anomalous series within a large collection of streaming time series using EVT.  We define an anomaly here as an observation that is very unlikely given the distribution of the typical behavior of a given system. We cope with non-stationary data distributions using sliding window comparisons of feature densities, thereby allowing the decision model to adjust to the changing environment automatically as changes are detected. Our preliminary analysis using both synthetic data and data obtained using fiber optic cables reveals that the proposed framework (Algorithms \ref{alg:algorithm-off}, \ref{alg:algorithm-on} and \ref{alg:algorithm-concept}) can work well in the presence of non-stationary  environments and noisy time series from multi-modal typical classes.
+
+
+The density estimation in the proposed framework was done using a bivariate kernel density estimation method. Alternative methods of density estimation may lead to improved tail estimation, leading to better values for the anomalous threshold. The test of nonstationarity also depends on the kernel density estimates, and we may not reject stationarity when $m$ is small. Log-spline bivariate density estimation [@kooperberg1991study] and local likelihood density estimation [@loader1996local] would be worth considering in attempting to improve tail estimation, and thereby improve the performance of the algorithm in the presence of moderate to low values of $m$. In the current work,  Kolmogorov-Smirnov test for the Gumbel  is used to confirm the goodness-of-fit [@marshall2007life]. Alternative methods as proposed in [@clifton2014extending] may guide to better values for the anomalous threshold in the presence of other sub-classes of EVT. 
+
+The current framework is developed under the assumption that the measurements produced by sensors are one dimensional. The rapid advances in hardware technology has made it possible for many sensors to capture multiple measurements simultaneously, leading ultimately to a collection of multidimensional multivariate streaming time series data. An important open research problem is to extend our framework to handle such data. One possibility is to consider the features extracted from multiple measurements as a point pattern [@luca2014anomaly; @luca2016one; @luca2018point] and then focus on the problem of identifying the anomalous point patterns generated by multiple measurements from individual sensors. Another possibility is to adopt a functional approach where time series of multiple measurements from individual sensors are represented by functions and anomalous thresholds are defined over the function space as in [@clifton2013extreme].
+
+In the current framework, the length of the sliding window is introduced as a user defined parameter that can be selected according to the application. Since the proposed framework is based on the features extracted from individual time series of a given window, a window size set too small will not be able to correctly capture the dynamic properties of the time series and thereby could reduce the performance of the framework. If, on the other hand, the window is too large, then it will take a long time to adjust to the new typical behavior in the presence of nonstationarity. Accordingly, selecting the appropriate input window size is a trade-off between classification performance and the time taken to adjust to the new typical behavior. A possible extension of the proposed framework could involve ways of optimally selecting the window size to balance this trade-off.
+
+
+# Supplemental Materials
+
+\begin{description}
+
+\item[\textbf{Data and scripts:}] Datasets and R code to reproduce all figures in this article (main.R).
+
+\item[\textbf{R package oddstream:}] The oddstream package \citep{Roddstream} consists of the implementation of Algorithm \ref{alg:algorithm-off}, \ref{alg:algorithm-on} and \ref{alg:algorithm-concept} as described in this article. Version 0.5.0 of the package was used for the results presented in the article and is available from Github \url{https://github.com/pridiltal/oddstream}.
+
+\item[\textbf{R-packages:}] Each of the R packages used in this article
+(\textit{ggplot2} \citep{Rggplot2009},
+\textit{dplyr} \citep{Rdplyr2017},
+\textit{tibble} \citep{Rtibble2017},
+\textit{tidyr} \citep{Rtidyr2017},
+\textit{reshape} \citep{Rreshape2007})
+are available online (URLs are provided in the bibliography).
+
+\end{description}
+
+# Acknowledgements {-}
+
+This research was supported in part by the Monash eResearch Centre and eSolutions-Research Support Services through the use of the MonARCH (Monash Advanced Research Computing Hybrid) HPC Cluster. Funding was provided by the Australian Research Council through the Linkage Project LP160101885.
